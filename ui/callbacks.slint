@@ -1,0 +1,118 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+export struct PolicyRow {
+    id: string,
+    name: string,
+    checksum: string,
+    network: string,
+    summary: string,
+}
+
+export struct PathRow {
+    kind-label: string,   // "Primary path" / "Recovery path"
+    is-recovery: bool,
+    headline: string,     // plain gist, e.g. "Spend anytime" / "After ~12 months untouched"
+    detail: string,       // who can sign + the condition, in plain language
+}
+
+export struct SignerRow {
+    fingerprint: string,
+    owned: bool,
+    detail: string,
+}
+
+export struct OutputRow {
+    address: string,
+    amount: string,    // "10,000 sats"
+    is-change: bool,   // true = returns to this wallet, false = leaving
+}
+
+export global Callbacks {
+    // -- Home: registered policies -----------------------------------------
+    in-out property <[PolicyRow]> policies: [];        // active (non-archived)
+    in-out property <int> policy-count: 0;
+    in-out property <[PolicyRow]> archived-policies: [];
+    in-out property <int> archived-count: 0;
+
+    // -- Policy detail ------------------------------------------------------
+    in-out property <string> detail-id: "";
+    in-out property <string> detail-name: "";
+    in-out property <string> detail-checksum: "";
+    in-out property <string> detail-network: "";
+    in-out property <string> detail-descriptor: "";
+    in-out property <bool> detail-archived: false;
+    in-out property <[PathRow]> detail-paths: [];
+    in-out property <[SignerRow]> detail-signers: [];
+
+    // -- Signing review -----------------------------------------------------
+    in-out property <bool> psbt-loading: false;        // reading + matching a PSBT (show spinner)
+    in-out property <bool> review-ready: false;        // a PSBT was loaded (gate navigation; false on cancel)
+    in-out property <string> review-wallet-name: "";   // which registered wallet the PSBT matched
+    in-out property <bool> review-matched: false;
+    in-out property <bool> review-can-sign: false;
+    in-out property <bool> review-is-recovery: false;
+    in-out property <string> review-path-label: "";
+    in-out property <[OutputRow]> review-output-rows: [];
+    in-out property <string> review-total-out: "";  // sum actually leaving the wallet
+    in-out property <string> review-fee: "";
+    in-out property <string> review-warning: "";
+    in-out property <string> review-status: "";
+    in-out property <bool> signing: false;              // sign in progress (spinner)
+    in-out property <bool> review-signed: false;        // signing succeeded
+    in-out property <bool> review-saved: false;         // signed PSBT written to a file
+    in-out property <string> review-signed-detail: "";  // where it was saved / next step
+
+    // -- Xpub export --------------------------------------------------------
+    in-out property <string> xpub-fingerprint: "";
+    in-out property <string> xpub-path: "";
+    in-out property <string> xpub-value: "";
+    in-out property <string> xpub-network: "signet";
+
+    // -- Shared export result (xpub key + descriptor) -----------------------
+    in-out property <bool> export-ok: false;        // last export succeeded -> show success screen
+    in-out property <string> export-error: "";      // why the last export failed (shown in place)
+    in-out property <string> export-done-title: ""; // success screen heading
+    in-out property <string> export-done-detail: ""; // success screen body
+
+    // -- Verify address -----------------------------------------------------
+    in-out property <bool> verify-ready: false;        // a code was scanned (gate navigation; false on cancel)
+    in-out property <bool> verify-matched: false;
+    in-out property <string> verify-title: "";
+    in-out property <string> verify-addr: "";
+    in-out property <string> verify-detail: "";
+
+    // -- Status banner ------------------------------------------------------
+    in-out property <string> status: "";
+
+    // -- Import flow --------------------------------------------------------
+    // Set true by import-policy() when a descriptor parsed OK and is staged for
+    // review (detail-* hold the parsed policy, not yet committed to the store).
+    in-out property <bool> import-parsed: false;
+    in-out property <bool> import-committed: false;
+    // Set when an import fails so the home screen can show why (instead of
+    // silently bouncing back with no feedback).
+    in-out property <string> import-error: "";
+    // User-chosen wallet name (edited on the review screen; applied on confirm).
+    in-out property <string> import-name: "";
+    // Editable name for the selected policy (rename screen); tracks detail-name.
+    in-out property <string> rename-value: "";
+
+    // -- UI -> Rust ---------------------------------------------------------
+    callback import-policy();      // parse a descriptor + stage it for review
+    callback confirm-import();     // commit the staged policy
+    callback cancel-import();      // discard the staged policy
+    callback select-policy(string /* checksum id */);
+    callback sign-psbt(string /* checksum id */);
+    callback verify-address(string /* checksum id */);
+    callback archive-policy(string /* checksum id */);
+    callback restore-policy(string /* checksum id */);
+    callback delete-policy(string /* checksum id */);
+    callback rename-policy(string /* checksum id */, string /* new name */);
+    callback export-descriptor(string /* checksum id */);
+    callback export-xpub();
+    callback set-xpub-network(string /* bitcoin | signet */);
+    callback export-key-file(); // save the signer key to a chosen location
+    callback approve();
+    callback export-signed(); // save the signed PSBT to a chosen location
+}

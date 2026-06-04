@@ -1,0 +1,256 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ButtonSection, AppHeader, TextLg, TextMd, TextSm, BasePage,
+         ScrollBody, IconButton, TimerCircularProgress, JumboIcon, Icon } from "@ui/widgets.slint";
+import { Importance, Palette, Size, IconSize } from "@ui/theme.slint";
+import { Callbacks } from "../../callbacks.slint";
+import { ReviewPageProps } from "./props.slint";
+import { Navigate } from "../../gen/navigate.slint";
+import { TR2, TrId } from "../../gen/tr.slint";
+import { Liana } from "../../liana-theme.slint";
+import { LianaButton, LianaCard } from "../../liana-widgets.slint";
+import { LianaSlideToButton } from "../../liana-slide-to-button.slint";
+
+export component ReviewPagePage inherits Rectangle {
+    in property <ReviewPageProps> props;
+
+    // Deferred sign: the slide flips `signing` on so the spinner paints, then this
+    // one-shot timer fires on the next tick to run the (synchronous) sign.
+    sign-timer := Timer {
+        interval: 50ms;
+        running: false;
+        triggered => {
+            sign-timer.running = false;
+            Callbacks.approve();
+        }
+    }
+
+    BasePage {
+        VerticalLayout {
+            AppHeader {
+                title: TR2.lookup(TrId.ReviewTitle);
+                side-padding: Size.sz6;
+                IconButton {
+                    icon: "chevron-left";
+                    size: Size.sz8;
+                    importance: Importance.normal;
+                    clicked => { Navigate.backward(); }
+                }
+                Rectangle { }
+            }
+
+            ScrollBody {
+                p-x: Size.sz4;  // 16px → 448px content fits 480px screen (no h-scroll)
+                VerticalLayout {
+                    spacing: Size.sz3;
+
+                    // Reading + matching the PSBT (runs on a worker thread, so this
+                    // spinner animates while it works).
+                    if Callbacks.psbt-loading: VerticalLayout {
+                        padding-top: Size.sz8;
+                        spacing: Size.sz4;
+                        HorizontalLayout {
+                            alignment: center;
+                            TimerCircularProgress {
+                                indeterminate: true;
+                                running: true;
+                                size: 64px;
+                                front-color: Liana.green;
+                            }
+                        }
+                        TextMd {
+                            text: TR2.lookup(TrId.ReviewLoadingTitle);
+                            color: Liana.green;
+                            horizontal-alignment: center;
+                        }
+                        TextSm {
+                            text: TR2.lookup(TrId.ReviewLoadingDetail);
+                            color: Palette.content-secondary;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    // Success banner once the device has signed. Saving the file
+                    // then routes to the full-screen success.
+                    if Callbacks.review-signed: LianaCard {
+                        width: 448px;
+                        VerticalLayout {
+                            padding: Size.sz4;
+                            spacing: Size.sz1;
+                            TextLg { text: TR2.lookup(TrId.ReviewSignedTitle); color: Liana.green; bold: true; }
+                            TextSm {
+                                text: TR2.lookup(TrId.ReviewSignedBody);
+                                color: Liana.on-surface-dim;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // Which registered wallet this PSBT belongs to.
+                    if Callbacks.review-matched: TextSm { text: TR2.lookup(TrId.ReviewSigningFor); color: Palette.content-tertiary; }
+                    if Callbacks.review-matched: TextLg {
+                        text: Callbacks.review-wallet-name;
+                        color: Palette.content-primary;
+                        bold: true;
+                        wrap: word-wrap;
+                    }
+
+                    if Callbacks.review-matched: TextSm { text: TR2.lookup(TrId.ReviewActivePath); color: Palette.content-tertiary; }
+                    if Callbacks.review-matched: TextLg {
+                        text: Callbacks.review-path-label;
+                        color: Callbacks.review-is-recovery ? Liana.recovery : Liana.green;
+                        bold: true;
+                        wrap: word-wrap;
+                    }
+
+                    // Distinct recovery warning (Liana red).
+                    if Callbacks.review-is-recovery: LianaCard {
+                        width: 448px;
+                        height: 96px;
+                        recovery: true;
+                        VerticalLayout {
+                            padding: Size.sz4;
+                            alignment: center;
+                            TextMd {
+                                text: Callbacks.review-warning;
+                                color: Liana.on-surface;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // One card per output. Destinations (leaving the wallet) use
+                    // the green accent and a "Sending" tag; change (returning to
+                    // this wallet) uses a muted grey accent and a "Change" tag.
+                    if Callbacks.review-matched: TextSm { text: TR2.lookup(TrId.ReviewOutputs); color: Palette.content-tertiary; }
+                    for o in Callbacks.review-matched ? Callbacks.review-output-rows : []: LianaCard {
+                        width: 448px;
+                        change: o.is-change;
+                        VerticalLayout {
+                            padding: Size.sz4;
+                            spacing: Size.sz1;
+                            HorizontalLayout {
+                                spacing: Size.sz2;
+                                alignment: space-between;
+                                TextSm {
+                                    text: o.is-change ? TR2.lookup(TrId.ReviewChangeOutput) : TR2.lookup(TrId.ReviewSendingOutput);
+                                    color: o.is-change ? Liana.change : Liana.green;
+                                    bold: true;
+                                }
+                                TextMd {
+                                    text: o.amount;
+                                    color: Liana.on-surface;
+                                    bold: true;
+                                    horizontal-alignment: right;
+                                }
+                            }
+                            TextSm {
+                                text: o.address;
+                                color: Liana.on-surface-dim;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    // Summary: fee, then the true total out of the wallet
+                    // (amount sent + fee; change returns and is excluded).
+                    if Callbacks.review-matched: HorizontalLayout {
+                        spacing: Size.sz2;
+                        alignment: space-between;
+                        TextSm { text: TR2.lookup(TrId.ReviewNetworkFee); color: Palette.content-tertiary; vertical-alignment: center; }
+                        TextMd { text: Callbacks.review-fee; color: Palette.content-primary; horizontal-alignment: right; }
+                    }
+                    if Callbacks.review-matched: HorizontalLayout {
+                        spacing: Size.sz2;
+                        alignment: space-between;
+                        TextMd { text: TR2.lookup(TrId.ReviewTotalLeaving); color: Palette.content-primary; bold: true; vertical-alignment: center; }
+                        TextMd { text: Callbacks.review-total-out; color: Liana.green; bold: true; horizontal-alignment: right; }
+                    }
+
+                    // No match (or blocked): a clean centered alert instead of empty
+                    // section scaffolding.
+                    if !Callbacks.review-matched && !Callbacks.review-signed && !Callbacks.psbt-loading: VerticalLayout {
+                        spacing: Size.sz3;
+                        padding-top: Size.sz6;
+                        HorizontalLayout {
+                            alignment: center;
+                            JumboIcon {
+                                name: "jumbo-circle";
+                                Icon { name: "alert"; size: IconSize.px96; color: Liana.recovery; }
+                            }
+                        }
+                        TextLg {
+                            text: TR2.lookup(TrId.ReviewCantSignTitle);
+                            color: Liana.recovery;
+                            bold: true;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                        TextMd {
+                            text: Callbacks.review-status;
+                            color: Palette.content-secondary;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            ButtonSection {
+                // Inset to match the content cards + lift off the bottom edge.
+                padding-left: Size.sz6;
+                padding-right: Size.sz6;
+                padding-bottom: Size.sz6;
+                // After signing, the whole point is to save the file, so Save is
+                // the primary action; on success route to the full-screen success.
+                if Callbacks.review-signed: LianaButton {
+                    label: TR2.lookup(TrId.ReviewSaveToFile);
+                    primary: true;
+                    clicked => {
+                        Callbacks.export-signed();
+                        if Callbacks.export-ok { Navigate.export-done-page({ }); }
+                    }
+                }
+                if Callbacks.review-signed && Callbacks.review-signed-detail != "": TextSm {
+                    text: Callbacks.review-signed-detail;
+                    color: Liana.recovery;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                if Callbacks.review-signed: LianaButton {
+                    label: TR2.lookup(TrId.CommonButtonDone);
+                    primary: false;
+                    clicked => { Navigate.home-page({ }); }
+                }
+                // While signing: a Liana-green spinner (sign runs on the next tick).
+                if Callbacks.signing && !Callbacks.review-signed: HorizontalLayout {
+                    alignment: center;
+                    spacing: Size.sz3;
+                    TimerCircularProgress {
+                        indeterminate: true;
+                        running: true;
+                        size: 40px;
+                        front-color: Liana.green;
+                    }
+                    TextMd {
+                        text: TR2.lookup(TrId.CommonSlideToSignSigning);
+                        color: Liana.green;
+                        vertical-alignment: center;
+                    }
+                }
+                // Before signing: slide to sign (matches the Bitcoin app). The
+                // header back arrow is the way out, so no separate reject button.
+                if !Callbacks.review-signed && !Callbacks.signing && Callbacks.review-matched && Callbacks.review-can-sign: LianaSlideToButton {
+                    label: Callbacks.review-is-recovery ? TR2.lookup(TrId.ReviewSignRecoverySpend) : TR2.lookup(TrId.CommonSlideToSignSign);
+                    info-label: TR2.lookup(TrId.CommonSlideToSignHelper);
+                    activated(id) => {
+                        Callbacks.signing = true;
+                        sign-timer.running = true;
+                    }
+                }
+            }
+        }
+    }
+}

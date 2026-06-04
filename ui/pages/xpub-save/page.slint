@@ -1,0 +1,75 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ButtonSection, AppHeader, TextLg, TextMd, TextSm, BasePage,
+         ScrollBody, IconButton } from "@ui/widgets.slint";
+import { Importance, Palette, Size } from "@ui/theme.slint";
+import { Callbacks } from "../../callbacks.slint";
+import { XpubSavePageProps } from "./props.slint";
+import { Navigate } from "../../gen/navigate.slint";
+import { TR2, TrId } from "../../gen/tr.slint";
+import { Liana } from "../../liana-theme.slint";
+import { LianaCard, LianaButton } from "../../liana-widgets.slint";
+
+export component XpubSavePagePage inherits Rectangle {
+    in property <XpubSavePageProps> props;
+
+    BasePage {
+        VerticalLayout {
+            AppHeader {
+                title: TR2.lookup(TrId.XpubSaveTitle);
+                side-padding: Size.sz6;
+                IconButton {
+                    icon: "chevron-left";
+                    size: Size.sz8;
+                    importance: Importance.normal;
+                    clicked => { Navigate.backward(); }
+                }
+                Rectangle { }
+            }
+
+            ScrollBody {
+                p-x: Size.sz4;
+                VerticalLayout {
+                    spacing: Size.sz4;
+
+                    TextMd {
+                        text: TR2.lookup(TrId.XpubSaveBody);
+                        color: Palette.content-secondary;
+                        wrap: word-wrap;
+                    }
+
+                    TextSm { text: TR2.lookup(TrId.XpubSaveKeyLabel); color: Palette.content-tertiary; }
+                    TextLg { text: Callbacks.xpub-fingerprint; color: Liana.green; bold: true; }
+                    LianaCard {
+                        width: 448px;
+                        VerticalLayout {
+                            padding: Size.sz4;
+                            TextSm { text: Callbacks.xpub-value; color: Liana.on-surface; wrap: word-wrap; }
+                        }
+                    }
+
+                    if Callbacks.export-error != "": TextSm {
+                        text: Callbacks.export-error;
+                        color: Liana.recovery;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            ButtonSection {
+                padding-left: Size.sz6;
+                padding-right: Size.sz6;
+                padding-bottom: Size.sz6;
+                LianaButton {
+                    label: TR2.lookup(TrId.XpubSaveSaveKeyToFile);
+                    primary: true;
+                    clicked => {
+                        Callbacks.export-key-file();
+                        if Callbacks.export-ok { Navigate.export-done-page({ }); }
+                    }
+                }
+            }
+        }
+    }
+}

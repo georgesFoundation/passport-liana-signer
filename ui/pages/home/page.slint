@@ -1,0 +1,215 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { ButtonSection, ContentSection, HeadingLg, AppHeader,
+         TextLg, TextMd, TextSm, BasePage, ShieldPage, PageBody, JumboIcon, Icon, IconButton,
+         OverlayMenu, PopupMenuItem } from "@ui/widgets.slint";
+import { Importance, Palette, Size, UISize, IconSize } from "@ui/theme.slint";
+import { Callbacks, PolicyRow } from "../../callbacks.slint";
+import { HomePageProps } from "./props.slint";
+import { Navigate } from "../../gen/navigate.slint";
+import { TR2, TrId } from "../../gen/tr.slint";
+import { Liana } from "../../liana-theme.slint";
+import { LianaButton, LianaCard, LianaDot } from "../../liana-widgets.slint";
+
+component PolicyCard inherits Rectangle {
+    in property <PolicyRow> policy;
+    callback clicked();
+    height: 96px;
+
+    LianaCard {
+        width: 448px;
+        height: parent.height;
+
+        VerticalLayout {
+            padding-left: Size.sz5;
+            padding-right: Size.sz5;
+            alignment: center;
+            spacing: Size.sz0_5;
+
+            TextLg {
+                text: policy.name;
+                color: Liana.on-surface;
+                bold: true;
+                wrap: no-wrap;
+                overflow: elide;
+            }
+            TextSm {
+                text: policy.summary;
+                color: Liana.on-surface-dim;
+            }
+            TextSm {
+                text: policy.checksum;
+                color: Liana.green;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => { clicked(); }
+    }
+}
+
+export component HomePagePage inherits Rectangle {
+    in property <HomePageProps> props;
+
+    // Setup + archive actions live behind the ⋯ menu (shared by both states).
+    property <bool> is-menu-open: false;
+
+    // ---- Empty state ----------------------------------------------------
+    if Callbacks.policy-count == 0: ShieldPage {
+        ContentSection {
+            HorizontalLayout {
+                alignment: center;
+                JumboIcon {
+                    name: "jumbo-circle";
+                    // The Liana brand symbol, tinted neon green.
+                    Icon {
+                        name: "liana";
+                        size: IconSize.px96;
+                        color: Liana.green;
+                    }
+                }
+            }
+            HeadingLg {
+                text: TR2.lookup(TrId.HomeNoPoliciesTitle);
+                horizontal-alignment: center;
+            }
+            TextMd {
+                text: TR2.lookup(TrId.HomeNoPoliciesBody);
+                color: Palette.content-secondary;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+            // Surface why an import failed instead of silently returning here.
+            if Callbacks.import-error != "": TextMd {
+                text: Callbacks.import-error;
+                color: Liana.recovery;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+        ButtonSection {
+            LianaButton {
+                label: TR2.lookup(TrId.HomeImportPolicy);
+                primary: true;
+                clicked => {
+                    Callbacks.import-policy();
+                    if Callbacks.import-parsed { Navigate.import-review-page({ }); }
+                }
+            }
+            LianaButton {
+                label: TR2.lookup(TrId.HomeConnectToLiana);
+                primary: false;
+                clicked => {
+                    Callbacks.export-xpub();
+                    Navigate.xpub-page({ });
+                }
+            }
+        }
+    }
+
+    // ---- Populated -------------------------------------------------------
+    if Callbacks.policy-count > 0: BasePage {
+        VerticalLayout {
+            AppHeader {
+                title: TR2.lookup(TrId.AppName);
+                side-padding: Size.sz6;
+                VerticalLayout {
+                    alignment: center;
+                    LianaDot { }
+                }
+                IconButton {
+                    icon: "ellipsis";
+                    size: Size.sz8;
+                    importance: Importance.normal;
+                    clicked => { is-menu-open = !is-menu-open; }
+                }
+            }
+            PageBody {
+                // Content + status at the top; CTAs pinned to the bottom
+                // (PageBody is space-between, so the last child sits at the bottom).
+                ContentSection {
+                    spacing: Size.sz3;
+                    for entry in Callbacks.policies: PolicyCard {
+                        policy: entry;
+                        clicked => {
+                            Callbacks.select-policy(entry.id);
+                            Navigate.policy-page({ });
+                        }
+                    }
+                }
+                ButtonSection {
+                    LianaButton {
+                        label: TR2.lookup(TrId.HomeSignTransaction);
+                        primary: true;
+                        clicked => {
+                            Callbacks.sign-psbt("");
+                            if Callbacks.review-ready { Navigate.review-page({ }); }
+                        }
+                    }
+                    LianaButton {
+                        label: TR2.lookup(TrId.HomeVerifyAddress);
+                        primary: false;
+                        clicked => {
+                            Callbacks.verify-address("");
+                            if Callbacks.verify-ready { Navigate.verify-page({ }); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Empty-state ⋯ (overlaid top-right so it doesn't shift the hero); only
+    // shown when there is an archive to reach.
+    if Callbacks.policy-count == 0 && Callbacks.archived-count > 0: IconButton {
+        // Inset from the top-right corner so it isn't jammed against the card's
+        // rounded edge. Absolutely positioned (overlay), so this moves only the
+        // icon and never shifts the hero/CTAs.
+        x: root.width - self.width - Size.sz8;
+        y: UISize.control-center-status-bar-height + Size.sz5;
+        icon: "ellipsis";
+        size: Size.sz8;
+        importance: Importance.normal;
+        clicked => { is-menu-open = !is-menu-open; }
+    }
+
+    // ---- Shared ⋯ pop-out menu (overlays everything) --------------------
+    if is-menu-open: OverlayMenu {
+        touched-off => { is-menu-open = false; }
+
+        // Setup actions only when there are active policies (the empty state
+        // already surfaces Import / Export Xpub as its primary CTAs).
+        if Callbacks.policy-count > 0: PopupMenuItem {
+            label: TR2.lookup(TrId.HomeImportPolicy);
+            icon: "import";
+            first: true;
+            clicked => {
+                is-menu-open = false;
+                Callbacks.import-policy();
+                if Callbacks.import-parsed { Navigate.import-review-page({ }); }
+            }
+        }
+        if Callbacks.policy-count > 0: PopupMenuItem {
+            label: TR2.lookup(TrId.HomeConnectToLiana);
+            icon: "export";
+            last: Callbacks.archived-count == 0;
+            clicked => {
+                is-menu-open = false;
+                Callbacks.export-xpub();
+                Navigate.xpub-page({ });
+            }
+        }
+        if Callbacks.archived-count > 0: PopupMenuItem {
+            label: TR2.format(TrId.HomeArchivedPoliciesCount, [Callbacks.archived-count]);
+            icon: "archive";
+            first: Callbacks.policy-count == 0;
+            last: true;
+            clicked => {
+                is-menu-open = false;
+                Navigate.archive-page({ });
+            }
+        }
+    }
+}

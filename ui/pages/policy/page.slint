@@ -1,0 +1,105 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+import { AppHeader, TextLg, TextMd, TextSm, BasePage, ScrollBody, IconButton, Icon } from "@ui/widgets.slint";
+import { Importance, Palette, Size } from "@ui/theme.slint";
+import { Callbacks, PathRow, SignerRow } from "../../callbacks.slint";
+import { PolicyPageProps } from "./props.slint";
+import { Navigate } from "../../gen/navigate.slint";
+import { TR2, TrId } from "../../gen/tr.slint";
+import { Liana } from "../../liana-theme.slint";
+import { LianaCard } from "../../liana-widgets.slint";
+
+export component PolicyPagePage inherits Rectangle {
+    in property <PolicyPageProps> props;
+
+    BasePage {
+        VerticalLayout {
+            AppHeader {
+                title: TR2.lookup(TrId.PolicyTitle);
+                side-padding: Size.sz6;
+                IconButton {
+                    icon: "chevron-left";
+                    size: Size.sz8;
+                    importance: Importance.normal;
+                    clicked => { Navigate.backward(); }
+                }
+                // Tucked-away access to advanced/destructive actions.
+                IconButton {
+                    icon: "ellipsis";
+                    size: Size.sz8;
+                    importance: Importance.normal;
+                    clicked => { Navigate.advanced-page({ }); }
+                }
+            }
+
+            ScrollBody {
+                p-x: Size.sz4;
+                VerticalLayout {
+                    spacing: Size.sz3;
+
+                    // Wallet identity
+                    TextLg { text: Callbacks.detail-name; color: Palette.content-primary; bold: true; wrap: word-wrap; }
+                    HorizontalLayout {
+                        spacing: Size.sz2;
+                        TextSm { text: Callbacks.detail-network; color: Liana.green; }
+                        TextSm { text: Callbacks.detail-checksum; color: Palette.content-tertiary; }
+                    }
+
+                    // Spend paths — icon-led, matching the import review.
+                    TextSm { text: TR2.lookup(TrId.PolicySpendIntro); color: Palette.content-tertiary; }
+                    for p in Callbacks.detail-paths: LianaCard {
+                        width: 448px;
+                        recovery: p.is-recovery;
+                        HorizontalLayout {
+                            padding: Size.sz4;
+                            spacing: Size.sz3;
+                            VerticalLayout {
+                                alignment: start;
+                                Icon {
+                                    name: p.is-recovery ? "hourglass" : "check-circle";
+                                    size: 36px;
+                                    color: p.is-recovery ? Liana.recovery : Liana.green;
+                                }
+                            }
+                            VerticalLayout {
+                                spacing: Size.sz1;
+                                horizontal-stretch: 1;
+                                TextSm {
+                                    text: p.kind-label;
+                                    color: p.is-recovery ? Liana.recovery : Liana.green;
+                                    bold: true;
+                                }
+                                TextLg { text: p.headline; color: Liana.on-surface; bold: true; wrap: word-wrap; }
+                                TextSm { text: p.detail; color: Liana.on-surface-dim; wrap: word-wrap; }
+                            }
+                        }
+                    }
+
+                    // Keys — key icon, green when this Passport holds it.
+                    TextSm { text: TR2.lookup(TrId.PolicyKeysTitle); color: Palette.content-tertiary; }
+                    for s in Callbacks.detail-signers: HorizontalLayout {
+                        spacing: Size.sz3;
+                        alignment: start;
+                        VerticalLayout {
+                            alignment: center;
+                            Icon { name: "key"; size: 28px; color: s.owned ? Liana.green : Palette.content-tertiary; }
+                        }
+                        VerticalLayout {
+                            spacing: Size.sz0_5;
+                            horizontal-stretch: 1;
+                            TextMd {
+                                text: s.owned ? TR2.lookup(TrId.PathThisPassport) : TR2.lookup(TrId.PathExternalKey);
+                                color: s.owned ? Liana.green : Palette.content-primary;
+                                bold: true;
+                            }
+                            TextSm { text: TR2.format(TrId.ImportPathsKeyFingerprint, [s.fingerprint]); color: Palette.content-tertiary; }
+                        }
+                    }
+
+                    Rectangle { height: Size.sz4; }
+                }
+            }
+        }
+    }
+}

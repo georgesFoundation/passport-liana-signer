@@ -1,0 +1,26 @@
+// SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Liana brand palette, taken from wizardsardine/liana `liana-ui/src/color.rs`.
+// Applied as green accents over Passport's dark shell so the app reads as a
+// Liana extension while staying coherent with the device.
+export global Liana {
+    // Hero green + variants.
+    out property <brush> green: #00FF66;        // GREEN — primary CTA / accents
+    out property <brush> green-dim: #4CA55E;     // SUCCESS_GREEN — pressed/muted
+    out property <brush> green-dark: #007A33;    // DARK_GREEN — borders
+
+    // Surfaces.
+    out property <brush> surface: #162B20;        // FINGERPRINT_BACKGROUND — green-tinted card
+    out property <brush> surface-recovery: #2B1712; // warm-tinted card for recovery
+    out property <brush> surface-change: #1B1F1D;  // neutral grey card for change (de-emphasized)
+    out property <brush> change: #9BB3A4;          // muted grey accent for change outputs
+
+    // Warning.
+    out property <brush> recovery: #E24E1B;       // RED — recovery / alert
+
+    // Content.
+    out property <brush> on-green: #000000;        // text on the green fill
+    out property <brush> on-surface: #FFFFFF;
+    out property <brush> on-surface-dim: #9BB3A4;  // muted greenish grey
+}
