@@ -77,6 +77,19 @@ pub fn match_psbt(
         });
     }
 
+    if let Err(reason) = validate_amounts(psbt) {
+        reasons.push(reason);
+        return Ok(MatchResult {
+            matched: true,
+            active_path: None,
+            active_timelock_blocks: None,
+            passport_can_sign: false,
+            matched_inputs,
+            total_inputs,
+            reasons,
+        });
+    }
+
     // Infer the active branch from every input's nSequence. For a decaying
     // (multi-tier) policy, a relative-block nSequence unlocks every recovery
     // tier whose older(n) it satisfies; the deepest tier reached (largest n)
@@ -183,4 +196,34 @@ fn deepest_unlocked_recovery(policy: &RegisteredPolicy, seq_blocks: Option<u32>)
             _ => None,
         })
         .max()
+}
+
+fn validate_amounts(psbt: &Psbt) -> std::result::Result<(), String> {
+    if psbt.inputs.len() != psbt.unsigned_tx.input.len() {
+        return Err("PSBT input map count does not match unsigned transaction inputs".into());
+    }
+
+    let mut input_sum = 0u64;
+    for (i, input) in psbt.inputs.iter().enumerate() {
+        let utxo = input
+            .witness_utxo
+            .as_ref()
+            .ok_or_else(|| format!("input {i}: no witness_utxo (cannot verify amount)"))?;
+        input_sum = input_sum
+            .checked_add(utxo.value.to_sat())
+            .ok_or_else(|| "input amount overflow".to_string())?;
+    }
+
+    let mut output_sum = 0u64;
+    for output in &psbt.unsigned_tx.output {
+        output_sum = output_sum
+            .checked_add(output.value.to_sat())
+            .ok_or_else(|| "output amount overflow".to_string())?;
+    }
+
+    if output_sum > input_sum {
+        return Err("transaction outputs exceed verified inputs".into());
+    }
+
+    Ok(())
 }

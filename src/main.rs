@@ -256,7 +256,7 @@ fn app_main(_cx: AppContext, ui: AppWindow) {
             // responsive, then post the result back to the event loop.
             let (policies, fp) = {
                 let st = state.lock().unwrap();
-                (st.policies.all().to_vec(), st.fp)
+                (signable_policies(&st.policies), st.fp)
             };
             {
                 let cb = ui.global::<Callbacks>();
@@ -307,6 +307,7 @@ fn app_main(_cx: AppContext, ui: AppWindow) {
                     .policies
                     .all()
                     .iter()
+                    .filter(|r| policy_is_signable(r))
                     .map(|r| {
                         (
                             r.descriptor.clone(),
@@ -379,6 +380,16 @@ fn app_main(_cx: AppContext, ui: AppWindow) {
                 // Security gate (defence-in-depth beyond the UI flag): refuse
                 // unless the PSBT matched the policy and Passport owns a key on
                 // the active path.
+                let still_signable = st
+                    .policies
+                    .find_by_checksum(&pending.policy.descriptor_checksum)
+                    .map(policy_is_signable)
+                    .unwrap_or(false);
+                if !still_signable {
+                    ui.global::<Callbacks>().set_signing(false);
+                    set_status(&ui, tr::lookup_id(TrId::ErrorPolicyNotFound));
+                    return;
+                }
                 if let signing::SignDecision::Refuse(reason) =
                     signing::decide(&pending.matched, &pending.policy)
                 {
@@ -1102,6 +1113,10 @@ fn network_display(network: Network) -> &'static str {
     }
 }
 
+fn is_public_network(network: Network) -> bool {
+    matches!(network, Network::Bitcoin | Network::Signet)
+}
+
 fn network_from_label(label: &str) -> Option<Network> {
     match label {
         "bitcoin" | "mainnet" | "Bitcoin" | "Mainnet" => Some(Network::Bitcoin),
@@ -1234,6 +1249,14 @@ fn policy_summary(p: &RegisteredPolicy) -> String {
     }
 }
 
+fn policy_is_signable(policy: &RegisteredPolicy) -> bool {
+    !policy.archived && network_from_policy(policy).map(is_public_network).unwrap_or(false)
+}
+
+fn signable_policies(store: &store::PolicyStore) -> Vec<RegisteredPolicy> {
+    store.all().iter().filter(|p| policy_is_signable(p)).cloned().collect()
+}
+
 fn load_policies(dir: &Path) -> store::PolicyStore { load_policies_impl(dir) }
 
 #[cfg(not(keyos))]
@@ -1328,31 +1351,31 @@ fn data_dir() -> PathBuf {
     PathBuf::from(home).join(DATA_SUBDIR)
 }
 
-#[cfg(not(keyos))]
+#[cfg(all(not(keyos), feature = "sim-bridge"))]
 fn sim_bridge_file(dir: &Path, filename: &str) -> Option<PathBuf> {
     let path = dir.join(filename);
     path.exists().then_some(path)
 }
 
-#[cfg(keyos)]
+#[cfg(any(keyos, not(feature = "sim-bridge")))]
 fn sim_bridge_file(_dir: &Path, _filename: &str) -> Option<PathBuf> { None }
 
-#[cfg(not(keyos))]
+#[cfg(all(not(keyos), feature = "sim-bridge"))]
 fn write_bridge_file(dir: &Path, filename: &str, bytes: &[u8]) {
     write_bridge_path(&dir.join(filename), bytes);
 }
 
-#[cfg(keyos)]
+#[cfg(any(keyos, not(feature = "sim-bridge")))]
 fn write_bridge_file(_dir: &Path, _filename: &str, _bytes: &[u8]) {}
 
-#[cfg(not(keyos))]
+#[cfg(all(not(keyos), feature = "sim-bridge"))]
 fn write_bridge_path(path: &Path, bytes: &[u8]) {
     if let Err(e) = std::fs::write(path, bytes) {
         log::warn!("failed to write sim bridge file {}: {e}", path.display());
     }
 }
 
-#[cfg(keyos)]
+#[cfg(any(keyos, not(feature = "sim-bridge")))]
 fn write_bridge_path(_path: &Path, _bytes: &[u8]) {}
 
 fn show_startup_error(ui: &AppWindow, msg: &str) {
@@ -1714,18 +1737,14 @@ mod tests {
         assert_eq!(tls, vec![1000, 2000], "each tier keeps its own timelock");
     }
 
-    // A Taproot Liana descriptor (tr) must import and classify its paths.
+    // Taproot is shelved for this release: fail clearly instead of importing a
+    // descriptor whose PSBT flow is not fully verified yet.
     #[test]
-    fn taproot_liana_descriptor_imports_and_analyzes() {
+    fn taproot_liana_descriptor_is_rejected_for_now() {
         let (a, b) = (test_key(0x31), test_key(0x32));
         let desc = format!("tr({a}/<0;1>/*,and_v(v:pk({b}/<0;1>/*),older(4032)))");
-        let parsed = descriptor::import(&desc).expect("taproot descriptor imports");
-        assert!(parsed.canonical.starts_with("tr("));
-        let paths = policy::analyze_paths(&parsed.descriptor).expect("analyze");
-        assert_eq!(paths.len(), 2);
-        assert!(paths.iter().any(|p| matches!(p.kind, SpendPathKind::Primary)));
-        let rec = paths.iter().find(|p| matches!(p.kind, SpendPathKind::Recovery)).unwrap();
-        assert_eq!(rec.relative_timelock_blocks, Some(4032));
+        let err = descriptor::import(&desc).unwrap_err().to_string();
+        assert!(err.contains("Taproot"), "got: {err}");
     }
 
     #[test]
@@ -1760,6 +1779,20 @@ mod tests {
     }
 
     #[test]
+    fn psbt_with_outputs_exceeding_inputs_is_not_signable() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        psbt.unsigned_tx.output[0].value = Amount::from_sat(110_000);
+
+        let m = lpsbt::match_psbt(&psbt, &reg, fp, GAP).expect("match");
+        assert!(m.matched, "the script still belongs to the registered policy");
+        assert!(!m.passport_can_sign, "invalid amounts must block signing");
+        assert!(m.reasons.iter().any(|r| r.contains("outputs exceed verified inputs")));
+        assert!(matches!(signing::decide(&m, &reg), signing::SignDecision::Refuse(_)));
+    }
+
+    #[test]
     fn register_descriptor_rejects_garbage() {
         let (_, _, fp) = device();
         assert!(register_descriptor("definitely not a descriptor", fp).is_err());
@@ -1787,6 +1820,56 @@ mod tests {
         let store = load_policies(&dir);
         assert_eq!(store.len(), 1);
         assert!(store.find_by_checksum(&reg.descriptor_checksum).is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn signable_policies_excludes_archived_and_unsupported_networks() {
+        let (secp, xpub, fp) = device();
+        let mut active = seed_sample(&secp, &xpub, fp).unwrap();
+        active.descriptor_checksum = "active".into();
+
+        let mut archived = active.clone();
+        archived.descriptor_checksum = "archived".into();
+        archived.archived = true;
+
+        let mut unsupported = active.clone();
+        unsupported.descriptor_checksum = "unsupported".into();
+        unsupported.network = "testnet".into();
+
+        let mut store = store::PolicyStore::new();
+        store.add(active).unwrap();
+        store.add(archived).unwrap();
+        store.add(unsupported).unwrap();
+
+        let signable = signable_policies(&store);
+        assert_eq!(signable.len(), 1);
+        assert_eq!(signable[0].descriptor_checksum, "active");
+    }
+
+    #[cfg(all(not(keyos), not(feature = "sim-bridge")))]
+    #[test]
+    fn sim_bridge_is_disabled_without_feature() {
+        let dir = std::env::temp_dir().join("liana-signer-test-bridge-disabled");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(UNSIGNED_PSBT_FILE), b"not used").unwrap();
+
+        assert!(sim_bridge_file(&dir, UNSIGNED_PSBT_FILE).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(all(not(keyos), feature = "sim-bridge"))]
+    #[test]
+    fn sim_bridge_is_enabled_with_feature() {
+        let dir = std::env::temp_dir().join("liana-signer-test-bridge-enabled");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(UNSIGNED_PSBT_FILE), b"used").unwrap();
+
+        assert!(sim_bridge_file(&dir, UNSIGNED_PSBT_FILE).is_some());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

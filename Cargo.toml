@@ -8,6 +8,11 @@ edition = "2021"
 authors = ["Foundation Devices, Inc. <hello@foundation.xyz>"]
 license = "GPL-3.0-or-later"
 
+[features]
+# Host-only helper for same-Mac simulator/Liana file exchange. Keep disabled for
+# release builds so the app cannot silently read/write bridge files.
+sim-bridge = []
+
 [dependencies]
 # KeyOS plumbing
 fs = { workspace = true }

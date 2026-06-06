@@ -14,9 +14,9 @@ pub struct ParsedDescriptor {
     pub canonical: String,
 }
 
-/// Import descriptor text. Supports the two shapes Liana emits: P2WSH
-/// (`wsh(...)`) and Taproot (`tr(...)`); other forms are rejected with a clear
-/// error rather than silently accepted.
+/// Import descriptor text. Supports the P2WSH (`wsh(...)`) Liana shape. Taproot
+/// is intentionally out of scope for this release and rejected clearly rather
+/// than silently accepted.
 pub fn import(text: &str) -> Result<ParsedDescriptor> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -27,10 +27,15 @@ pub fn import(text: &str) -> Result<ParsedDescriptor> {
         .map_err(|e| Error::Parse(format!("invalid descriptor: {e}")))?;
 
     match &descriptor {
-        Descriptor::Wsh(_) | Descriptor::Tr(_) => {}
+        Descriptor::Wsh(_) => {}
+        Descriptor::Tr(_) => {
+            return Err(Error::Unsupported(
+                "Taproot (tr) Liana descriptors are not supported in this release; use P2WSH (wsh)".into(),
+            ))
+        }
         other => {
             return Err(Error::Unsupported(format!(
-                "only P2WSH (wsh) and Taproot (tr) Liana descriptors are supported, got: {}",
+                "only P2WSH (wsh) Liana descriptors are supported, got: {}",
                 kind_name(other)
             )))
         }

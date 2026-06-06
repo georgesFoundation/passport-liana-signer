@@ -24,7 +24,7 @@ _Add device captures to `docs/screenshots/`._
 
 ## Spend paths
 
-Understands and explains, in plain language, single-key, recovery (timelocked `older(n)`), and decaying multi-tier policies, and supports both P2WSH and Taproot.
+Understands and explains, in plain language, single-key, recovery (timelocked `older(n)`), and decaying multi-tier P2WSH policies. Taproot support is shelved until the signing flow is fully fixture-tested end to end.
 
 ## How signing stays safe
 
