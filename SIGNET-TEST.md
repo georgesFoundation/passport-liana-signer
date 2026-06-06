@@ -3,15 +3,17 @@
 Liana is **file-based** (no QR/UR/BBQr import — verified against their repo). This
 test runs the Passport **hosted simulator** and **Liana desktop** on the same Mac
 and exchanges files through one shared host folder. Build/run the hosted app with
-the `sim-bridge` Cargo feature enabled for this convenience path; release builds
-leave the bridge disabled.
+the `dev-seed` and `sim-bridge` Cargo features enabled for this convenience
+path; release builds leave both disabled.
 
 > **Sim vs device file transport.** In the hosted simulator the device file
 > picker browses a *simulated* FAT disk (`xous/kernel/disk_system.dat`), which a
 > host app like Liana can't see. So for this same-Mac test the bridge is the
 > **host folder below** (the app reads/writes it directly). The file picker is
 > the real-Passport-Prime mechanism (USB/Airlock) and is still wired in. Without
-> the `sim-bridge` feature, the app ignores these host files.
+> the `sim-bridge` feature, the app ignores these host files. Without the
+> `dev-seed` feature, a host build will not fall back to the deterministic
+> simulator seed when `security.app_seed()` is unavailable.
 >
 > **You must build the Liana wallet with the SIM's own key.** Export Xpub in the
 > sim shows the device fingerprint (e.g. `6ac68ab8`); use *that* key in Liana, or
@@ -34,8 +36,8 @@ leave the bridge disabled.
 ## Prerequisites
 
 - Liana desktop in **Signet** mode (Settings → network, or run the Signet build).
-- Passport hosted simulator running with `gui-app-liana-signer/sim-bridge`
-  enabled → open **Liana Signer**.
+- Passport hosted simulator running with `gui-app-liana-signer/dev-seed` and
+  `gui-app-liana-signer/sim-bridge` enabled → open **Liana Signer**.
 - **Important — P2WSH only.** This POC supports SegWit `wsh` miniscript, not
   Taproot. When creating the Liana wallet choose the **P2WSH / SegWit** script
   type and a **simple inheritance** template (one primary key + one recovery

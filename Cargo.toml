@@ -9,6 +9,9 @@ authors = ["Foundation Devices, Inc. <hello@foundation.xyz>"]
 license = "GPL-3.0-or-later"
 
 [features]
+# Host-only deterministic app seed for simulator development. Keep disabled for
+# release builds so host binaries cannot silently derive a known signing key.
+dev-seed = []
 # Host-only helper for same-Mac simulator/Liana file exchange. Keep disabled for
 # release builds so the app cannot silently read/write bridge files.
 sim-bridge = []

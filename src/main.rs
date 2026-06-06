@@ -1664,6 +1664,7 @@ fn psbt_base64(psbt: &Psbt) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use liana::bitcoin::sighash::EcdsaSighashType;
 
     fn device() -> (Secp256k1<All>, Xpub, Fingerprint) {
         let secp = Secp256k1::new();
@@ -1715,6 +1716,13 @@ mod tests {
         format!("[{fp}/48'/1'/0'/2']{xpub}")
     }
 
+    fn import_error(desc: &str) -> String {
+        match descriptor::import(desc) {
+            Ok(_) => panic!("descriptor unexpectedly imported"),
+            Err(e) => e.to_string(),
+        }
+    }
+
     // A decaying policy (primary + two recovery tiers at different timelocks)
     // must flatten into three distinct spend paths, not merge the nested
     // recovery branches into one.
@@ -1743,8 +1751,26 @@ mod tests {
     fn taproot_liana_descriptor_is_rejected_for_now() {
         let (a, b) = (test_key(0x31), test_key(0x32));
         let desc = format!("tr({a}/<0;1>/*,and_v(v:pk({b}/<0;1>/*),older(4032)))");
-        let err = descriptor::import(&desc).unwrap_err().to_string();
+        let err = import_error(&desc);
         assert!(err.contains("Taproot"), "got: {err}");
+    }
+
+    #[test]
+    fn absolute_timelock_descriptor_is_rejected_for_now() {
+        let a = test_key(0x33);
+        let desc = format!("wsh(and_v(v:pk({a}/<0;1>/*),after(100)))");
+        let err = import_error(&desc);
+        assert!(err.contains("absolute locktimes"), "got: {err}");
+    }
+
+    #[test]
+    fn time_based_csv_descriptor_is_rejected_for_now() {
+        let (a, b) = (test_key(0x34), test_key(0x35));
+        let time_based_csv = (1 << 22) + 144;
+        let desc =
+            format!("wsh(or_d(pk({a}/<0;1>/*),and_v(v:pkh({b}/<0;1>/*),older({time_based_csv}))))");
+        let err = import_error(&desc);
+        assert!(err.contains("block-based"), "got: {err}");
     }
 
     #[test]
@@ -1790,6 +1816,79 @@ mod tests {
         assert!(!m.passport_can_sign, "invalid amounts must block signing");
         assert!(m.reasons.iter().any(|r| r.contains("outputs exceed verified inputs")));
         assert!(matches!(signing::decide(&m, &reg), signing::SignDecision::Refuse(_)));
+    }
+
+    #[test]
+    fn psbt_matching_multiple_policies_is_refused() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut duplicate = reg.clone();
+        duplicate.id = "duplicate".into();
+        duplicate.descriptor_checksum = "duplicate".into();
+        let psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        let policies = vec![reg, duplicate];
+
+        let err = lpsbt::match_against_all(&psbt, &policies, fp, GAP).unwrap_err().to_string();
+        assert!(err.contains("more than one registered policy"), "got: {err}");
+    }
+
+    #[test]
+    fn psbt_with_unsafe_sighash_is_not_signable() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        psbt.inputs[0].sighash_type = Some(EcdsaSighashType::Single.into());
+
+        let m = lpsbt::match_psbt(&psbt, &reg, fp, GAP).expect("match");
+        assert!(m.matched, "the script still belongs to the registered policy");
+        assert!(!m.passport_can_sign, "unsafe sighash must block signing");
+        assert!(m.reasons.iter().any(|r| r.contains("unsupported sighash")), "{:?}", m.reasons);
+    }
+
+    #[test]
+    fn psbt_with_mismatched_witness_script_is_not_signable() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        psbt.inputs[0].witness_script = Some(ScriptBuf::from_hex("51").unwrap());
+
+        let m = lpsbt::match_psbt(&psbt, &reg, fp, GAP).expect("match");
+        assert!(m.matched, "the scriptPubKey still belongs to the registered policy");
+        assert!(!m.passport_can_sign, "mismatched witness_script must block signing");
+        assert!(m.reasons.iter().any(|r| r.contains("witness_script")), "{:?}", m.reasons);
+    }
+
+    #[test]
+    fn psbt_with_inconsistent_non_witness_utxo_is_not_signable() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        let witness_utxo = psbt.inputs[0].witness_utxo.clone().unwrap();
+        psbt.inputs[0].non_witness_utxo = Some(Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![],
+            output: vec![witness_utxo],
+        });
+
+        let m = lpsbt::match_psbt(&psbt, &reg, fp, GAP).expect("match");
+        assert!(m.matched, "the witness_utxo still belongs to the registered policy");
+        assert!(!m.passport_can_sign, "inconsistent non_witness_utxo must block signing");
+        assert!(m.reasons.iter().any(|r| r.contains("non_witness_utxo")), "{:?}", m.reasons);
+    }
+
+    #[test]
+    fn recovery_spend_requires_bip68_transaction_version() {
+        let (secp, xpub, fp) = device();
+        let reg = seed_sample(&secp, &xpub, fp).unwrap();
+        let mut psbt = build_owner_psbt(&secp, &reg, &xpub, fp).expect("psbt");
+        psbt.unsigned_tx.version = Version::ONE;
+        psbt.unsigned_tx.input[0].sequence = Sequence::from_height(RECOVERY_BLOCKS as u16);
+
+        let m = lpsbt::match_psbt(&psbt, &reg, fp, GAP).expect("match");
+        assert!(m.matched, "the input still belongs to the registered policy");
+        assert!(!m.passport_can_sign, "BIP68-disabled recovery spend must block signing");
+        assert!(m.reasons.iter().any(|r| r.contains("version 2")), "{:?}", m.reasons);
     }
 
     #[test]
