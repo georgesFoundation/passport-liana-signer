@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 Foundation Devices, Inc. <hello@foundation.xyz>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[env]
+CC_armv7a_unknown_xous_elf = { value = "arm-none-eabi-gcc", force = true }
+AR_armv7a_unknown_xous_elf = { value = "arm-none-eabi-ar", force = true }
+
+[net]
+git-fetch-with-cli = true

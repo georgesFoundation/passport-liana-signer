@@ -18,20 +18,26 @@ sim-bridge = []
 
 [dependencies]
 # KeyOS plumbing
-fs = { workspace = true }
-log = { workspace = true }
-log-server = { workspace = true }
-ngwallet = { workspace = true }
-security = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-server = { workspace = true }
-slint-keyos-platform = { path = "../../slint-keyos-platform/runtime" }
+log = "0.4"
+log-server = { package = "xous-api-log", git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
+ngwallet = { git = "https://github.com/Foundation-Devices/ngwallet.git", tag = "3.6.0", features = [
+    "rkyv",
+    "sha2",
+] }
+security = { git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+server = { git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
+slint-keyos-platform = { git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
 
 # Cross-target utilities
 anyhow = "1"
 base64 = "0.22"
+getrandom = "=0.2.10"
 hex = "0.4"
+# Keep this aligned with KeyOS' lockfile. simd-adler32 0.3.9 uses ARM NEON
+# intrinsics that are unstable with the current armv7a-unknown-xous-elf toolchain.
+simd-adler32 = "=0.3.7"
 
 # Descriptor/policy/PSBT/signing logic lives in src/liana/, built on ngwallet's
 # bitcoin + miniscript so it compiles for BOTH the host simulator and the
@@ -39,7 +45,11 @@ hex = "0.4"
 # `liana-signer-core` reference crate.
 
 [build-dependencies]
-slint-keyos-platform-build = { path = "../../slint-keyos-platform/build", default-features = false }
+slint-keyos-platform-build = { git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
+
+[patch.crates-io]
+foundation-ur = { git = "https://github.com/Foundation-Devices/foundation-rs.git", tag = "0.6.0" }
+getrandom = { git = "ssh://git@github.com/Foundation-Devices/KeyOS-Dev.git", rev = "c26c80a1b77553cebad0bd71cd4c4af0289b4a1c" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(keyos)'] }

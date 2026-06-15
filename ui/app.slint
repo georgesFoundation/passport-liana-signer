@@ -3,13 +3,13 @@
 
 import { Router } from "gen/router.slint";
 import { Callbacks } from "callbacks.slint";
-import { BaseWindow } from "@ui/widgets.slint";
-import { CurrentTheme, Images, Utils } from "@ui/theme.slint";
-import { TR } from "@ui/i18n/i18n.slint";
+import { BaseWindow } from "compat/widgets.slint";
+import { CurrentTheme, Images, Utils } from "compat/theme.slint";
+import { TR } from "compat/tr.slint";
 
 export component AppWindow inherits BaseWindow {
     Router { }
 }
 
 export * from "gen/exports.slint";
-export { Callbacks, CurrentTheme, Images, Utils, TR }
+export { Callbacks, CurrentTheme, Images, TR, Utils }

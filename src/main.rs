@@ -36,6 +36,7 @@ use liana::{
 };
 use slint_keyos_platform::{
     app,
+    fs,
     gui_server_api::navigation::{
         filepicker::{AllowedExtensions, AllowedLocations, Location as PickLocation, SelectFileOptions},
         qrscanner::{ScanQrOptions, ScanQrResult},
